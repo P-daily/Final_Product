@@ -195,9 +195,15 @@ def print_parking_data(parking_data, frame_counter, frame_interval):
 
 
 
+def detect_new_car_on_entrance(detections, parking_data):
 
+    entrance_coords = parking_data[-1]
+    entrance_top_left = entrance_coords['top_left']
 
+    for _, detection in detections.iterrows():
+        if detection['xmin'] > entrance_top_left[0]:
+            return True
 
-
-
-
+    return False
+def detect_and_scan_license_plate():
+    print("Czytam tablice rejestracyjne")

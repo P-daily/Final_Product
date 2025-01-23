@@ -1,5 +1,4 @@
 ﻿import cv2
-import torch
 
 # Function to check if the detected class is "car"
 def is_car(class_name):
@@ -43,5 +42,5 @@ def detect_car_and_return_frame(frame, model, confidence_threshold=0.6):
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
             cv2.putText(frame, label, (x1, y1 - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-    return frame
+    return frame, detections
 
