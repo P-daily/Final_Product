@@ -155,7 +155,7 @@ def draw_parking_boundary(frame, points):
 
     # Wjazd
     entrance_top_left = (col_starts[-2], y_min)
-    entrance_bottom_right = (col_starts[-1], y_max)
+    entrance_bottom_right = (col_starts[-1], y_min + (y_max - y_min) // 2)
     cv2.rectangle(frame, entrance_top_left, entrance_bottom_right, (0, 0, 255), 2)
     cv2.putText(frame, "Wjazd",
                 (entrance_top_left[0] + 10, entrance_top_left[1] + 30),
