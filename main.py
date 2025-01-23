@@ -1,6 +1,6 @@
 ﻿import cv2
 import torch
-from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, print_parking_data, \
+from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, \
     detect_new_car_on_entrance, detect_and_scan_license_plate
 from car_detector import detect_car_and_return_frame
 import pathlib
@@ -16,7 +16,6 @@ car_detection_model = torch.hub.load('ultralytics/yolov5', 'custom', path='car_d
 pathlib.PosixPath = temp
 
 
-
 video_path = os.path.join("films", "parking.mp4")
 cap = cv2.VideoCapture(video_path)
 
@@ -24,6 +23,7 @@ cap = cv2.VideoCapture(video_path)
 FRAME_INTERVAL = 5
 frame_counter = 0
 
+is_barrier_down = True
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -38,11 +38,9 @@ while cap.isOpened():
 
         is_detected = detect_new_car_on_entrance(detections, parking_data)
         if is_detected:
-            detect_and_scan_license_plate()
+            license_plate = detect_and_scan_license_plate()
+            print(license_plate)
 
-
-
-        # labelowanie samochodu
 
         cv2.imshow("Parking", frame_with_marks)
 

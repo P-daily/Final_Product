@@ -1,6 +1,9 @@
-﻿import cv2
+﻿import time
 import numpy as np
+import cv2
 
+from ultralytics import YOLO
+from paddleocr import PaddleOCR
 
 # Wykrywanie granic parkingu
 def detect_and_mark_red_points(frame):
@@ -184,19 +187,7 @@ def cut_frame_and_resize(frame, scale_percent=50):
     return frame
 
 
-def print_parking_data(parking_data, frame_counter, frame_interval):
-    pass
-    # if frame_counter % frame_interval == 0:
-    #     print("Rozpoznane miejsca parkingowe:")
-    #     for data in parking_data:
-    #         print(data)
-
-
-
-
-
 def detect_new_car_on_entrance(detections, parking_data):
-
     entrance_coords = parking_data[-1]
     entrance_top_left = entrance_coords['top_left']
 
@@ -205,5 +196,98 @@ def detect_new_car_on_entrance(detections, parking_data):
             return True
 
     return False
+
+
+def preprocess_image(image):
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Apply thresholding
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Invert the image
+    inverted = cv2.bitwise_not(thresh)
+
+    return inverted
+
+
 def detect_and_scan_license_plate():
-    print("Czytam tablice rejestracyjne")
+    ip_camera_url = "http://192.168.0.83:8080/video"
+    cap = cv2.VideoCapture(ip_camera_url)
+
+    if not cap.isOpened():
+        print("Error: Unable to connect to the IP camera.")
+        return None
+
+    # Process every n-th frame
+    frame_skip_interval = 10
+    frame_count = 0
+    last_detection = None
+    detection_count = 0
+
+    # Start the timer
+    start_time = time.time()
+    timeout_seconds = 15
+
+    # Load YOLO model
+    model = YOLO("best_plate_detector_model.pt")
+
+    # Initialize PaddleOCR
+    ocr = PaddleOCR(use_angle_cls=True, lang='en')
+
+    while True:
+        # Check if timeout is reached
+        if time.time() - start_time > timeout_seconds:
+            print("Timeout reached. No license plate detected.")
+            cap.release()
+            cv2.destroyAllWindows()
+            return None
+
+        ret, frame = cap.read()  # Capture a frame from the video stream
+        if not ret:
+            print("Failed to grab frame from IP camera.")
+            cap.release()
+            cv2.destroyAllWindows()
+            break
+
+        frame_count += 1
+        if frame_count % frame_skip_interval != 0:
+            continue
+
+            # Perform inference on the current frame
+        results = model(frame)
+
+        # Extract bounding box information
+        if results and results[0].boxes:  # Check if any detections exist
+            for box in results[0].boxes:  # Iterate over detected boxes
+                xyxy = box.xyxy.cpu().numpy()[0]  # Extract coordinates
+                x1, y1, x2, y2 = map(int, xyxy)
+
+                # Crop the image using the coordinates
+                cropped_img = frame[y1:y2, x1:x2]  # Crop the license plate region
+
+                # Perform OCR on the cropped image
+                result = ocr.ocr(cropped_img, cls=True)
+
+                if result and result[0]:
+                    detected_text = result[0][0][1][0]
+                    print(f"Detected Text: {detected_text}")
+
+                # if detected_text:
+                #     # If the detected text is consistent for 5 frames, return it
+                #     if last_detection == detected_text:
+                #         detection_count += 1
+                #         if detection_count >= 5:
+                #             cap.release()
+                #             cv2.destroyAllWindows()
+                #             return detected_text
+                #     else:
+                #         last_detection = detected_text
+                #         detection_count = 1
+
+        # Break the loop when the user presses 'Esc'
+        if cv2.waitKey(1) & 0xFF == 27:  # 27 is the ASCII code for the 'Esc' key
+            break
+
+    # Release the video capture object and close windows
+    cap.release()
+    cv2.destroyAllWindows()
+    return None
