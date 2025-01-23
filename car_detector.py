@@ -6,7 +6,7 @@ def is_car(class_name):
     return class_name.lower() == "car"
 
 
-def detect_and_return_frame(frame, model, confidence_threshold=0.6):
+def detect_car_and_return_frame(frame, model, confidence_threshold=0.6):
     """
     Perform object detection on a single frame and return the processed frame.
 

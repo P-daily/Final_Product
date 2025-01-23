@@ -163,9 +163,41 @@ def draw_parking_boundary(frame, points):
 
     parking_data.append({
         "id": "W",
-        "type": "W",  # Wjazd
+        "type": "W",
         "top_left": entrance_top_left,
         "bottom_right": entrance_bottom_right
     })
 
     return frame, parking_data
+
+
+def cut_frame_and_resize(frame, scale_percent=50):
+    height, width, _ = frame.shape
+    crop_top = int(height * 0.10)
+    crop_bottom = int(height * 0.7)
+    frame = frame[crop_top:crop_bottom, :]
+
+    width = int(frame.shape[1] * scale_percent / 100)
+    height = int(frame.shape[0] * scale_percent / 100)
+    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+    return frame
+
+
+def print_parking_data(parking_data, frame_counter, frame_interval):
+    pass
+    # if frame_counter % frame_interval == 0:
+    #     print("Rozpoznane miejsca parkingowe:")
+    #     for data in parking_data:
+    #         print(data)
+
+
+
+
+
+
+
+
+
+
+
