@@ -1,7 +1,4 @@
-﻿import torch
-import cv2
-import pathlib
-
+﻿import cv2
 
 # Function to check if the detected class is "car"
 def is_car(class_name):
