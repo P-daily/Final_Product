@@ -1,4 +1,5 @@
 ﻿import cv2
+import torch
 
 # Function to check if the detected class is "car"
 def is_car(class_name):
@@ -18,7 +19,7 @@ def detect_and_return_frame(frame, model, confidence_threshold=0.6):
         :param model:
         :param confidence_threshold:
     """
-    # Perform detection on the frame
+
     results = model(frame)
 
     # Get detections in pandas format

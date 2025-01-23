@@ -3,6 +3,10 @@ import torch
 from parking_utils import detect_and_mark_red_points, draw_parking_boundary
 from car_detector import detect_and_return_frame
 import pathlib
+import os
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 temp = pathlib.PosixPath
 pathlib.PosixPath = pathlib.WindowsPath
@@ -14,8 +18,9 @@ car_detection_model = torch.hub.load('ultralytics/yolov5', 'custom', path='car_d
                                      force_reload=True).to(device)
 
 pathlib.PosixPath = temp
-# Wywołanie i pokazanie działania
-video_path = "films/parking.mp4"
+
+
+video_path = os.path.join("films", "parking.mp4")
 cap = cv2.VideoCapture(video_path)
 
 fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -44,7 +49,7 @@ while cap.isOpened():
     frame = detect_and_return_frame(frame, car_detection_model, confidence_threshold=0.3)
     frame_with_marks, parking_data = draw_parking_boundary(frame, points)
 
-    cv2.imshow("Parking Boundary", frame_with_marks)
+    cv2.imshow("Parking", frame_with_marks)
 
     # Wypisuj dane co 20 sekund
     frame_counter += 1
