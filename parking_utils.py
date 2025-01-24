@@ -1,9 +1,11 @@
 ﻿import time
+
 import numpy as np
 import cv2
+import requests
 
-from ultralytics import YOLO
-from paddleocr import PaddleOCR
+API_URL = "http://127.0.0.1:5000"
+
 
 # Wykrywanie granic parkingu
 def detect_and_mark_red_points(frame):
@@ -112,21 +114,21 @@ def draw_parking_boundary(frame, points):
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
 
     parking_data.append({
-        "id": "X",
-        "type": "X",  # Wyjazd
+        "id": 11,  # id wyjazdu
+        "type": "EXIT",  # Wyjazd
         "top_left": exit_top_left,
         "bottom_right": exit_bottom_right
     })
 
     for idx, (blue_count, yellow_count, top_left, bottom_right) in enumerate(parking_areas):
         color = (0, 255, 255)  # Żółty
-        area_type = "N"
+        area_type = "DEFAULT"
 
         if label == 1:
-            area_type = "K"  # Kierownictwo
+            area_type = "MANAGER"  # Kierownictwo
             color = (0, 0, 0)  # Czarny
         elif label == 5:
-            area_type = "I"  # Inwalidzi
+            area_type = "DISABLED"  # Inwalidzi
             color = (255, 255, 255)  # Biały
 
         parking_data.append({
@@ -139,7 +141,7 @@ def draw_parking_boundary(frame, points):
         cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
         cv2.putText(frame, f"{label} {area_type}",
                     (top_left[0] + 10, top_left[1] + 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 2)
         label += 1
 
     # Droga
@@ -150,8 +152,8 @@ def draw_parking_boundary(frame, points):
                 cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 2)
 
     parking_data.append({
-        "id": "D",
-        "type": "D",  # Droga
+        "id": 9,  # id drogi
+        "type": "ROAD",  # Droga
         "top_left": road_top_left,
         "bottom_right": road_bottom_right
     })
@@ -165,8 +167,8 @@ def draw_parking_boundary(frame, points):
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
 
     parking_data.append({
-        "id": "W",
-        "type": "W",
+        "id": 10,  # id wjazdu
+        "type": "ENTRANCE",
         "top_left": entrance_top_left,
         "bottom_right": entrance_bottom_right
     })
@@ -189,105 +191,178 @@ def cut_frame_and_resize(frame, scale_percent=50):
 
 def detect_new_car_on_entrance(detections, parking_data):
     entrance_coords = parking_data[-1]
-    entrance_top_left = entrance_coords['top_left']
+    entrance_top_left_x = entrance_coords['top_left_x']
+    entrance_bottom_right_y = entrance_coords['bottom_right_y']
 
     for _, detection in detections.iterrows():
-        if detection['xmin'] > entrance_top_left[0]:
+        if detection['xmin'] > entrance_top_left_x and detection['ymax'] < entrance_bottom_right_y:
             return True
 
     return False
 
 
-def preprocess_image(image):
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Apply thresholding
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Invert the image
-    inverted = cv2.bitwise_not(thresh)
-
-    return inverted
-
-
-def detect_and_scan_license_plate():
-    ip_camera_url = "http://192.168.0.83:8080/video"
-    cap = cv2.VideoCapture(ip_camera_url)
-
-    if not cap.isOpened():
-        print("Error: Unable to connect to the IP camera.")
-        return None
-
-    # Process every n-th frame
-    frame_skip_interval = 10
-    frame_count = 0
-    last_detection = None
-    detection_count = 0
-
-    # Start the timer
-    start_time = time.time()
-    timeout_seconds = 15
-
-    # Load YOLO model
-    model = YOLO("best_plate_detector_model.pt")
-
-    # Initialize PaddleOCR
-    ocr = PaddleOCR(use_angle_cls=True, lang='en')
-
-    while True:
-        # Check if timeout is reached
-        if time.time() - start_time > timeout_seconds:
-            print("Timeout reached. No license plate detected.")
-            cap.release()
-            cv2.destroyAllWindows()
+def call_get_license_plate_api():
+    try:
+        response = requests.get(f"{API_URL}/license_plate_from_entrance")
+        if response.status_code == 200:
+            return response.json()['license_plate']
+        else:
             return None
 
-        ret, frame = cap.read()  # Capture a frame from the video stream
-        if not ret:
-            print("Failed to grab frame from IP camera.")
-            cap.release()
-            cv2.destroyAllWindows()
-            break
+    except Exception as e:
+        print(f"Error during API call: {e}")
 
-        frame_count += 1
-        if frame_count % frame_skip_interval != 0:
-            continue
 
-            # Perform inference on the current frame
-        results = model(frame)
+def call_is_entrance_allowed_api(license_plate):
+    try:
+        print(f"Checking if entrance is allowed for license plate: {license_plate}")
+        response = requests.get(f"{API_URL}/is_entrance_allowed/{license_plate}")
+        if response.status_code == 200:
+            # print(response.json())
+            is_allowed = response.json()['is_allowed']
+            parking_type = response.json()['parking_type']
+            return is_allowed, parking_type
+        else:
+            print(f"Failed to check if entrance is allowed for license plate '{license_plate}': {response.text}")
+            return False, 'unknown'
 
-        # Extract bounding box information
-        if results and results[0].boxes:  # Check if any detections exist
-            for box in results[0].boxes:  # Iterate over detected boxes
-                xyxy = box.xyxy.cpu().numpy()[0]  # Extract coordinates
-                x1, y1, x2, y2 = map(int, xyxy)
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False, 'unknown'
 
-                # Crop the image using the coordinates
-                cropped_img = frame[y1:y2, x1:x2]  # Crop the license plate region
 
-                # Perform OCR on the cropped image
-                result = ocr.ocr(cropped_img, cls=True)
+def call_car_entrance_api(license_plate):
+    try:
+        response = requests.post(f"{API_URL}/car_entrance", json={'license_plate': license_plate})
+        if response.status_code == 201:
+            # print(f"License plate '{license_plate}' sent successfully!")
+            return True
+        else:
+            print(f"Failed to send license plate '{license_plate}': {response.text}")
+            return False
 
-                if result and result[0]:
-                    detected_text = result[0][0][1][0]
-                    print(f"Detected Text: {detected_text}")
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
 
-                # if detected_text:
-                #     # If the detected text is consistent for 5 frames, return it
-                #     if last_detection == detected_text:
-                #         detection_count += 1
-                #         if detection_count >= 5:
-                #             cap.release()
-                #             cv2.destroyAllWindows()
-                #             return detected_text
-                #     else:
-                #         last_detection = detected_text
-                #         detection_count = 1
 
-        # Break the loop when the user presses 'Esc'
-        if cv2.waitKey(1) & 0xFF == 27:  # 27 is the ASCII code for the 'Esc' key
-            break
+def call_car_position_update_api(json_data):
+    try:
+        response = requests.post(f"{API_URL}/car_position", json=[json_data])
+        if response.status_code == 201:
+            # print(f"Car position sent successfully!")
+            return True
+        else:
+            print(f"Failed to send car position: {response.text}")
+            return False
 
-    # Release the video capture object and close windows
-    cap.release()
-    cv2.destroyAllWindows()
-    return None
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
+
+
+def add_new_car(license_plate, detections):
+    car_detection = detections.iloc[-1]
+
+    left_top_x = int(car_detection['xmin'])
+    left_top_y = int(car_detection['ymin'])
+    right_bottom_x = int(car_detection['xmax'])
+    right_bottom_y = int(car_detection['ymax'])
+
+    center_x = (left_top_x + right_bottom_x) // 2
+    center_y = (left_top_y + right_bottom_y) // 2
+
+    json_data = {
+        "license_plate": license_plate,
+        "center_x": center_x,
+        "center_y": center_y,
+        "left_top_x": left_top_x,
+        "left_top_y": left_top_y,
+        "right_bottom_x": right_bottom_x,
+        "right_bottom_y": right_bottom_y
+    }
+
+    # print(json_data)
+    call_car_position_update_api(json_data)
+
+
+def call_license_plate_by_position_api(center_x, center_y):
+    try:
+        response = requests.get(f"{API_URL}/license_plate_by_position/{center_x}/{center_y}",
+                                json={'center_x': center_x, 'center_y': center_y})
+        if response.status_code == 200:
+            return response.json()['license_plate']
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return None
+
+
+def update_positions_of_cars(detections):
+    for _, detection in detections.iterrows():
+        left_top_x = int(detection['xmin'])
+        left_top_y = int(detection['ymin'])
+        right_bottom_x = int(detection['xmax'])
+        right_bottom_y = int(detection['ymax'])
+
+        center_x = (left_top_x + right_bottom_x) // 2
+        center_y = (left_top_y + right_bottom_y) // 2
+
+        license_plate = call_license_plate_by_position_api(center_x, center_y)
+        if license_plate:
+            json_data = {
+                "license_plate": license_plate,
+                "center_x": center_x,
+                "center_y": center_y,
+                "left_top_x": left_top_x,
+                "left_top_y": left_top_y,
+                "right_bottom_x": right_bottom_x,
+                "right_bottom_y": right_bottom_y
+            }
+            # print(json_data)
+            call_car_position_update_api(json_data)
+
+
+def update_parking_area(parking_data):
+    try:
+        for area in parking_data:
+            area['top_left_x'] = int(area['top_left'][0])
+            area['top_left_y'] = int(area['top_left'][1])
+            area['bottom_right_x'] = int(area['bottom_right'][0])
+            area['bottom_right_y'] = int(area['bottom_right'][1])
+            area.pop('top_left')
+            area.pop('bottom_right')
+
+        response = requests.post(f"{API_URL}/parking_areas", json=parking_data)
+        if response.status_code == 201:
+            return True
+        else:
+            print(f"Failed to send parking area: {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
+
+
+def check_if_last_registered_car_is_out_of_entrance():
+    try:
+        response = requests.get(f"{API_URL}/is_car_out_of_entrance")
+        if response.status_code == 200:
+            is_car_out = response.json()['is_out']
+            if is_car_out:
+                print(f"out of the entrance.")
+                return True
+            else:
+                print(f"still in the entrance.")
+                return False
+        else:
+            print(f"Failed to check if car is out of the entrance: {response.text}")
+            return False
+
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
