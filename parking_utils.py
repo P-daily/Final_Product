@@ -1,9 +1,6 @@
-﻿import time
+﻿import cv2
 import numpy as np
-import cv2
 
-from ultralytics import YOLO
-from paddleocr import PaddleOCR
 
 # Wykrywanie granic parkingu
 def detect_and_mark_red_points(frame):
@@ -187,6 +184,14 @@ def cut_frame_and_resize(frame, scale_percent=50):
     return frame
 
 
+def print_parking_data(parking_data, frame_counter, frame_interval):
+    pass
+    # if frame_counter % frame_interval == 0:
+    #     print("Rozpoznane miejsca parkingowe:")
+    #     for data in parking_data:
+    #         print(data)
+
+
 def detect_new_car_on_entrance(detections, parking_data):
     entrance_coords = parking_data[-1]
     entrance_top_left = entrance_coords['top_left']
@@ -198,96 +203,79 @@ def detect_new_car_on_entrance(detections, parking_data):
     return False
 
 
-def preprocess_image(image):
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Apply thresholding
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Invert the image
-    inverted = cv2.bitwise_not(thresh)
-
-    return inverted
-
-
 def detect_and_scan_license_plate():
-    ip_camera_url = "http://192.168.0.83:8080/video"
-    cap = cv2.VideoCapture(ip_camera_url)
+    print("Czytam tablice rejestracyjne")
+    return True
 
-    if not cap.isOpened():
-        print("Error: Unable to connect to the IP camera.")
-        return None
 
-    # Process every n-th frame
-    frame_skip_interval = 10
-    frame_count = 0
-    last_detection = None
-    detection_count = 0
+def change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame):
+    """
+    Funkcja zmienia stan dwóch szlabanów (wjazdowego i wyjazdowego) i rysuje je na klatce.
 
-    # Start the timer
-    start_time = time.time()
-    timeout_seconds = 15
+    :param is_entry_barrier_down: bool, True jeśli szlaban wjazdowy ma być opuszczony, False jeśli podniesiony.
+    :param is_exit_barrier_down: bool, True jeśli szlaban wyjazdowy ma być opuszczony, False jeśli podniesiony.
+    :param frame: Obecna klatka wideo.
+    """
+    barrier_thickness = 10  # Grubość szlabanu
 
-    # Load YOLO model
-    model = YOLO("best_plate_detector_model.pt")
+    # Rozmiar klatki
+    frame_height, frame_width, _ = frame.shape
 
-    # Initialize PaddleOCR
-    ocr = PaddleOCR(use_angle_cls=True, lang='en')
+    # Współrzędne szlabanu wjazdowego
+    entry_barrier_start = (int(frame_width * 0.85), int(frame_height * 0.1))
+    entry_barrier_end_down = (int(frame_width * 0.85), int(frame_height * 0.3))
+    entry_barrier_end_up = (int(frame_width * 0.75), int(frame_height * 0.05))
 
-    while True:
-        # Check if timeout is reached
-        if time.time() - start_time > timeout_seconds:
-            print("Timeout reached. No license plate detected.")
-            cap.release()
-            cv2.destroyAllWindows()
-            return None
+    # Współrzędne szlabanu wyjazdowego
+    exit_barrier_start = (int(frame_width * 0.15), int(frame_height * 0.7))
+    exit_barrier_end_down = (int(frame_width * 0.15), int(frame_height * 0.9))
+    exit_barrier_end_up = (int(frame_width * 0.25), int(frame_height * 0.65))
 
-        ret, frame = cap.read()  # Capture a frame from the video stream
-        if not ret:
-            print("Failed to grab frame from IP camera.")
-            cap.release()
-            cv2.destroyAllWindows()
-            break
+    # Rysowanie szlabanu wjazdowego
+    if is_entry_barrier_down:
+        cv2.line(frame, entry_barrier_start, entry_barrier_end_down, (0, 0, 255), barrier_thickness)
+    else:
+        cv2.line(frame, entry_barrier_start, entry_barrier_end_up, (0, 255, 0), barrier_thickness)
 
-        frame_count += 1
-        if frame_count % frame_skip_interval != 0:
-            continue
+    # Rysowanie szlabanu wyjazdowego
+    if is_exit_barrier_down:
+        cv2.line(frame, exit_barrier_start, exit_barrier_end_down, (0, 0, 255), barrier_thickness)
+    else:
+        cv2.line(frame, exit_barrier_start, exit_barrier_end_up, (0, 255, 0), barrier_thickness)
 
-            # Perform inference on the current frame
-        results = model(frame)
+    return frame
 
-        # Extract bounding box information
-        if results and results[0].boxes:  # Check if any detections exist
-            for box in results[0].boxes:  # Iterate over detected boxes
-                xyxy = box.xyxy.cpu().numpy()[0]  # Extract coordinates
-                x1, y1, x2, y2 = map(int, xyxy)
 
-                # Crop the image using the coordinates
-                cropped_img = frame[y1:y2, x1:x2]  # Crop the license plate region
+def detect_new_car_on_exit(detections, parking_data):
+    """
+    Wykrywa nowe samochody znajdujące się na wyjeździe z parkingu.
 
-                # Perform OCR on the cropped image
-                result = ocr.ocr(cropped_img, cls=True)
+    :param detections: Wykrycia samochodów (np. DataFrame z danymi detekcji, zawierający współrzędne xmin, ymin, xmax, ymax).
+    :param parking_data: Dane o parkingu, w tym informacje o obszarze wyjazdu.
+    :return: True, jeśli wykryto samochód w obszarze wyjazdu, w przeciwnym razie False.
+    """
+    # Pobierz współrzędne obszaru wyjazdu
+    exit_coords = next((area for area in parking_data if area["type"] == "X"), None)
 
-                if result and result[0]:
-                    detected_text = result[0][0][1][0]
-                    print(f"Detected Text: {detected_text}")
+    if not exit_coords:
+        print("Nie znaleziono obszaru wyjazdu w danych parkingu.")
+        return False
 
-                # if detected_text:
-                #     # If the detected text is consistent for 5 frames, return it
-                #     if last_detection == detected_text:
-                #         detection_count += 1
-                #         if detection_count >= 5:
-                #             cap.release()
-                #             cv2.destroyAllWindows()
-                #             return detected_text
-                #     else:
-                #         last_detection = detected_text
-                #         detection_count = 1
+    exit_top_left = exit_coords['top_left']
+    exit_bottom_right = exit_coords['bottom_right']
 
-        # Break the loop when the user presses 'Esc'
-        if cv2.waitKey(1) & 0xFF == 27:  # 27 is the ASCII code for the 'Esc' key
-            break
+    # Sprawdź, czy jakakolwiek detekcja znajduje się w granicach obszaru wyjazdu
+    for _, detection in detections.iterrows():
+        car_top_left = (detection['xmin'], detection['ymin'])
+        car_bottom_right = (detection['xmax'], detection['ymax'])
 
-    # Release the video capture object and close windows
-    cap.release()
-    cv2.destroyAllWindows()
-    return None
+        # Sprawdzenie, czy samochód znajduje się w obszarze wyjazdu
+        if (
+            car_bottom_right[0] > exit_top_left[0] and  # prawy dolny x samochodu > lewy górny x wyjazdu
+            car_top_left[0] < exit_bottom_right[0] and  # lewy górny x samochodu < prawy dolny x wyjazdu
+            car_bottom_right[1] > exit_top_left[1] and  # prawy dolny y samochodu > lewy górny y wyjazdu
+            car_top_left[1] < exit_bottom_right[1]     # lewy górny y samochodu < prawy dolny y wyjazdu
+        ):
+            return True  # Wykryto samochód w obszarze wyjazdu
+
+    return False
