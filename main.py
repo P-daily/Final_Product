@@ -25,7 +25,7 @@ pathlib.PosixPath = temp
 video_path = os.path.join("films", "parking.mp4")
 cap = cv2.VideoCapture(video_path)
 
-FRAME_INTERVAL = 10
+FRAME_INTERVAL = 5
 frame_counter = 0
 
 is_entry_barrier_down = True
@@ -86,7 +86,7 @@ while cap.isOpened():
         if is_exit_V2_detected:
             is_car_deleted = call_car_exit_api(exit_car_license_plate)
             if is_car_deleted:
-                print("Car deleted")
+                print("\n\n\n\n-------------------------\n\n\n\n\n\n\n\n\Car deleted successfully!\n\n\n\n\n\n\n\n\n------------------------------------")
             else:
                 print("Car not deleted")
 

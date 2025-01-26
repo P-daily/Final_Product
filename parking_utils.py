@@ -9,13 +9,17 @@ API_URL = "http://127.0.0.1:5000"
 last_detection_time = time.time()
 
 
-def assign_license_plate_by_position(center_x, center_y):
-    """Assign a license plate based on position."""
-    license_plate = call_license_plate_by_position_api(center_x, center_y)
-    if license_plate is None:
-        license_plate = "UNKNOWN CAR"
+def call_all_license_plates_positions_api():
+    try:
+        response = requests.get(f"{API_URL}/all_license_plates_positions")
+        if response.status_code == 200:
+            return response.json()['cars']
+        else:
+            return None
 
-    return license_plate
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return None
 
 
 def reset_db():
@@ -314,7 +318,7 @@ def call_car_entrance_api(license_plate):
 
 def call_car_position_update_api(json_data):
     try:
-        response = requests.post(f"{API_URL}/car_position", json=[json_data])
+        response = requests.post(f"{API_URL}/car_position", json=json_data)
         if response.status_code == 201:
             # print(f"Car position sent successfully!")
             return True
@@ -330,7 +334,7 @@ def call_car_position_update_api(json_data):
 def add_new_car(license_plate, detections):
     car_detection = detections.sort_values(by='xmin', ascending=False).iloc[0]
 
-    print(car_detection)
+    # print(car_detection)
 
     left_top_x = int(car_detection['xmin'])
     left_top_y = int(car_detection['ymin'])
@@ -377,20 +381,32 @@ def update_positions_of_cars(detections):
         center_x = (left_top_x + right_bottom_x) // 2
         center_y = (left_top_y + right_bottom_y) // 2
 
-        license_plate = call_license_plate_by_position_api(center_x, center_y)
-        if license_plate is None:
-            license_plate = call_last_registered_license_plate_api()
-        if license_plate:
-            json_data = {
-                "license_plate": license_plate,
-                "center_x": center_x,
-                "center_y": center_y,
-                "left_top_x": left_top_x,
-                "left_top_y": left_top_y,
-                "right_bottom_x": right_bottom_x,
-                "right_bottom_y": right_bottom_y,
-            }
-            # print(json_data)
+        license_plate = None
+        json_data = []
+        # get all license plates positions
+        car_positions = call_all_license_plates_positions_api()
+        if car_positions is not None:
+            for car_position in car_positions:
+                distance = (center_x - car_position['center_x']) ** 2 + (center_y - car_position['center_y']) ** 2
+                if distance < 1000:
+                    license_plate = car_position['license_plate']
+                    break
+            else:
+                license_plate = None
+
+            if license_plate is None:
+                continue
+            else:
+                json_data.append({
+                    "license_plate": license_plate,
+                    "center_x": center_x,
+                    "center_y": center_y,
+                    "left_top_x": left_top_x,
+                    "left_top_y": left_top_y,
+                    "right_bottom_x": right_bottom_x,
+                    "right_bottom_y": right_bottom_y,
+                })
+                # print(json_data)
             call_car_position_update_api(json_data)
 
 
