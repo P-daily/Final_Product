@@ -254,7 +254,7 @@ def detect_car_on_exit(detections, parking_data, exit='V1'):
     if exit == 'V2':
         exit_coords = parking_data[0]
     else:
-        exit_coords = parking_data[-1]
+        exit_coords = parking_data[1]
         license_plate = call_get_license_plate_from_exit_api()
 
     exit_top_left_x = exit_coords['top_left_x']
@@ -268,7 +268,7 @@ def detect_car_on_exit(detections, parking_data, exit='V1'):
             'xmax'] < exit_bottom_right_x and detection['ymax'] < exit_bottom_right_y:
             return True, license_plate
 
-    return False, license_plate
+    return False, None
 
 
 def call_get_license_plate_api():
@@ -550,7 +550,6 @@ def change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame):
     # Współrzędne szlabanu wyjazdowego
     exit_barrier_start = (coords_x, int(frame_height * 0.55))
     exit_barrier_end_down = (coords_x, int(frame_height * 0.68))
-
 
     # Rysowanie szlabanu wjazdowego
     if is_entry_barrier_down:

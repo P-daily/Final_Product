@@ -79,19 +79,17 @@ while cap.isOpened():
         if time.time() - exit_time > exit_check_interval:
             exit_time = time.time()
             is_exit_detected, exit_car_license_plate = detect_car_on_exit(detections, parking_data)
-            print("exit", is_exit_detected, exit_car_license_plate)
             if is_exit_detected:
                 is_exit_barrier_down = False
                 exiting_cars_license_plate = exit_car_license_plate
-            else:
-                is_exit_barrier_down = True
+
 
         is_exit_V2_detected, _ = detect_car_on_exit(detections, parking_data, 'V2')
-        print("exitv2", is_exit_V2_detected, exiting_cars_license_plate)
         if is_exit_V2_detected and exiting_cars_license_plate is not None:
             is_car_deleted = call_car_exit_api(exiting_cars_license_plate)
             if is_car_deleted:
                 call_log_api("car_exited", exiting_cars_license_plate)
+                is_exit_barrier_down = True
 
         if time.time() - properly_parked_check_time > is_properly_parked_check_interval:
             properly_parked_check_time = time.time()
@@ -100,6 +98,7 @@ while cap.isOpened():
                 call_log_api("not_allowed_parking (wrong privileges)", improperly_parked_cars)
 
         change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame_with_marks)
+
         cv2.imshow("Parking", frame_with_marks)
 
     frame_counter += 1
