@@ -32,7 +32,7 @@ is_exit_barrier_down = True
 
 reset_db()
 
-exit_check_interval = 3
+exit_check_interval = 1
 exit_time = time.time()
 exitv2_time = time.time()
 is_exit_detected = False
@@ -79,6 +79,7 @@ while cap.isOpened():
         if time.time() - exit_time > exit_check_interval:
             exit_time = time.time()
             is_exit_detected, exit_car_license_plate = detect_car_on_exit(detections, parking_data)
+            print("exit", is_exit_detected, exit_car_license_plate)
             if is_exit_detected:
                 is_exit_barrier_down = False
                 exiting_cars_license_plate = exit_car_license_plate
@@ -88,7 +89,7 @@ while cap.isOpened():
 
 
         is_exit_V2_detected, _ = detect_car_on_exit(detections, parking_data, 'V2')
-        print(is_exit_V2_detected, exiting_cars_license_plate)
+        print("exitv2", is_exit_V2_detected, exiting_cars_license_plate)
         if is_exit_V2_detected and exiting_cars_license_plate is not None:
             is_car_deleted = call_car_exit_api(exiting_cars_license_plate)
             if is_car_deleted:
