@@ -6,6 +6,29 @@ import requests
 
 API_URL = "http://127.0.0.1:5000"
 
+last_detection_time = time.time()
+
+
+def assign_license_plate_by_position(center_x, center_y):
+    """Assign a license plate based on position."""
+    license_plate = call_license_plate_by_position_api(center_x, center_y)
+    if license_plate is None:
+        license_plate = "UNKNOWN CAR"
+
+    return license_plate
+
+
+def reset_db():
+    try:
+        response = requests.get(f"{API_URL}/reset_db")
+        if response.status_code == 200:
+            print("Database reset successfully!")
+        else:
+            print(f"Failed to reset database: {response.text}")
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+
 
 # Wykrywanie granic parkingu
 def detect_and_mark_red_points(frame):
@@ -74,7 +97,7 @@ def draw_parking_boundary(frame, points):
     x_min, y_min = np.min(points, axis=0)
     x_max, y_max = np.max(points, axis=0)
 
-    cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+    cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 1)
 
     # Wymiary parkingu
     height = y_max - y_min
@@ -105,13 +128,28 @@ def draw_parking_boundary(frame, points):
     parking_data = []
     label = 1
 
+    # Wyjazd za szlabanem
+    exit_top_left = (col_starts[4], row_starts[2])
+    exit_bottom_right = (col_starts[5], row_starts[3])
+    cv2.rectangle(frame, exit_top_left, exit_bottom_right, (0, 0, 255), 1)
+    cv2.putText(frame, "Wyjazd_V2",
+                (exit_top_left[0] + 10, exit_top_left[1] + 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 1)
+
+    parking_data.append({
+        "id": 12,  # id wyjazdu
+        "type": "EXITV2",  # Wyjazd
+        "top_left": exit_top_left,
+        "bottom_right": exit_bottom_right
+    })
+
     # Wyjazd
     exit_top_left = (col_starts[2], row_starts[2])
     exit_bottom_right = (col_starts[4], row_starts[3])
-    cv2.rectangle(frame, exit_top_left, exit_bottom_right, (0, 0, 255), 2)
+    cv2.rectangle(frame, exit_top_left, exit_bottom_right, (0, 0, 255), 1)
     cv2.putText(frame, "Wyjazd",
                 (exit_top_left[0] + 10, exit_top_left[1] + 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
 
     parking_data.append({
         "id": 11,  # id wyjazdu
@@ -138,10 +176,10 @@ def draw_parking_boundary(frame, points):
             "bottom_right": bottom_right
         })
 
-        cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
+        cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 1)
         cv2.putText(frame, f"{label} {area_type}",
                     (top_left[0] + 10, top_left[1] + 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
         label += 1
 
     # Droga
@@ -149,7 +187,7 @@ def draw_parking_boundary(frame, points):
     road_bottom_right = (x_max - entrance_width, row_starts[3])
     cv2.putText(frame, "Droga",
                 (x_min + 10, row_starts[1] + int((row_heights[1] + row_heights[2]) // 2)),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 1)
 
     parking_data.append({
         "id": 9,  # id drogi
@@ -161,10 +199,10 @@ def draw_parking_boundary(frame, points):
     # Wjazd
     entrance_top_left = (col_starts[-2], y_min)
     entrance_bottom_right = (col_starts[-1], y_min + (y_max - y_min) // 2)
-    cv2.rectangle(frame, entrance_top_left, entrance_bottom_right, (0, 0, 255), 2)
+    cv2.rectangle(frame, entrance_top_left, entrance_bottom_right, (0, 0, 255), 1)
     cv2.putText(frame, "Wjazd",
                 (entrance_top_left[0] + 10, entrance_top_left[1] + 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 1)
 
     parking_data.append({
         "id": 10,  # id wjazdu
@@ -190,6 +228,12 @@ def cut_frame_and_resize(frame, scale_percent=50):
 
 
 def detect_new_car_on_entrance(detections, parking_data):
+    global last_detection_time
+    current_detection_time = time.time()
+    if current_detection_time - last_detection_time < 2:
+        return False
+    last_detection_time = current_detection_time
+
     entrance_coords = parking_data[-1]
     entrance_top_left_x = entrance_coords['top_left_x']
     entrance_bottom_right_y = entrance_coords['bottom_right_y']
@@ -199,6 +243,28 @@ def detect_new_car_on_entrance(detections, parking_data):
             return True
 
     return False
+
+
+def detect_car_on_exit(detections, parking_data, exit='V1'):
+    license_plate = None
+    if exit == 'V2':
+        exit_coords = parking_data[0]
+    else:
+        exit_coords = parking_data[-1]
+        license_plate = call_get_license_plate_from_exit_api()
+
+    exit_top_left_x = exit_coords['top_left_x']
+    exit_top_left_y = exit_coords['top_left_y']
+
+    exit_bottom_right_x = exit_coords['bottom_right_x']
+    exit_bottom_right_y = exit_coords['bottom_right_y']
+
+    for _, detection in detections.iterrows():
+        if detection['xmin'] > exit_top_left_x and detection['ymin'] > exit_top_left_y and detection[
+            'xmax'] < exit_bottom_right_x and detection['ymax'] < exit_bottom_right_y:
+            return True, license_plate
+
+    return False, license_plate
 
 
 def call_get_license_plate_api():
@@ -262,7 +328,9 @@ def call_car_position_update_api(json_data):
 
 
 def add_new_car(license_plate, detections):
-    car_detection = detections.iloc[-1]
+    car_detection = detections.sort_values(by='xmin', ascending=False).iloc[0]
+
+    print(car_detection)
 
     left_top_x = int(car_detection['xmin'])
     left_top_y = int(car_detection['ymin'])
@@ -282,7 +350,6 @@ def add_new_car(license_plate, detections):
         "right_bottom_y": right_bottom_y
     }
 
-    # print(json_data)
     call_car_position_update_api(json_data)
 
 
@@ -311,6 +378,8 @@ def update_positions_of_cars(detections):
         center_y = (left_top_y + right_bottom_y) // 2
 
         license_plate = call_license_plate_by_position_api(center_x, center_y)
+        if license_plate is None:
+            license_plate = call_last_registered_license_plate_api()
         if license_plate:
             json_data = {
                 "license_plate": license_plate,
@@ -319,7 +388,7 @@ def update_positions_of_cars(detections):
                 "left_top_x": left_top_x,
                 "left_top_y": left_top_y,
                 "right_bottom_x": right_bottom_x,
-                "right_bottom_y": right_bottom_y
+                "right_bottom_y": right_bottom_y,
             }
             # print(json_data)
             call_car_position_update_api(json_data)
@@ -353,10 +422,10 @@ def check_if_last_registered_car_is_out_of_entrance():
         if response.status_code == 200:
             is_car_out = response.json()['is_out']
             if is_car_out:
-                print(f"out of the entrance.")
+                # print(f"out of the entrance.")
                 return True
             else:
-                print(f"still in the entrance.")
+                # print(f"still in the entrance.")
                 return False
         else:
             print(f"Failed to check if car is out of the entrance: {response.text}")
@@ -366,3 +435,44 @@ def check_if_last_registered_car_is_out_of_entrance():
     except Exception as e:
         print(f"Error during API call: {e}")
         return False
+
+
+def call_car_exit_api(exit_car_license_plate):
+    try:
+        response = requests.delete(f"{API_URL}/car_exit/{exit_car_license_plate}")
+        if response.status_code == 200:
+            print(f"Exit handled successfully!")
+            return True
+        else:
+            print(f"Failed to handle exit: {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
+
+
+def call_last_registered_license_plate_api():
+    try:
+        response = requests.get(f"{API_URL}/last_registered_license_plate")
+        if response.status_code == 200:
+            return response.json()['license_plate']
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return None
+
+
+def call_get_license_plate_from_exit_api():
+    try:
+        response = requests.get(f"{API_URL}/license_plate_from_exit")
+        if response.status_code == 200:
+            return response.json()['license_plate']
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return None
