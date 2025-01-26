@@ -6,7 +6,7 @@ import torch
 from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, \
     detect_new_car_on_entrance, call_get_license_plate_api, call_is_entrance_allowed_api, call_car_entrance_api, \
     add_new_car, update_positions_of_cars, update_parking_area, check_if_last_registered_car_is_out_of_entrance, \
-    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api
+    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api, change_barrier_state
 from car_detector import draw_detections, detect_objects
 import pathlib
 import os
@@ -86,8 +86,6 @@ while cap.isOpened():
             else:
                 is_exit_barrier_down = True
 
-
-
         is_exit_V2_detected, _ = detect_car_on_exit(detections, parking_data, 'V2')
         print("exitv2", is_exit_V2_detected, exiting_cars_license_plate)
         if is_exit_V2_detected and exiting_cars_license_plate is not None:
@@ -101,6 +99,7 @@ while cap.isOpened():
             if not are_all_cars_parked_properly and improperly_parked_cars:
                 call_log_api("not_allowed_parking (wrong privileges)", improperly_parked_cars)
 
+        change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame_with_marks)
         cv2.imshow("Parking", frame_with_marks)
 
     frame_counter += 1

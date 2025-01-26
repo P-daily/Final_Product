@@ -526,3 +526,42 @@ def call_log_api(log_type, data):
     except Exception as e:
         print(f"Error during API call: {e}")
         return False
+
+
+def change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame):
+    """
+    Funkcja zmienia stan dwóch szlabanów (wjazdowego i wyjazdowego) i rysuje je na klatce.
+
+    :param is_entry_barrier_down: bool, True jeśli szlaban wjazdowy ma być opuszczony, False jeśli podniesiony.
+    :param is_exit_barrier_down: bool, True jeśli szlaban wyjazdowy ma być opuszczony, False jeśli podniesiony.
+    :param frame: Obecna klatka wideo.
+    """
+    barrier_thickness = 10  # Grubość szlabanu
+
+    # Rozmiar klatki
+    frame_height, frame_width, _ = frame.shape
+
+    coords_x = int(frame_width * 0.75)
+
+    # Współrzędne szlabanu wjazdowego
+    entry_barrier_start = (coords_x, int(frame_height * 0.36))
+    entry_barrier_end_down = (coords_x, int(frame_height * 0.5))
+
+    # Współrzędne szlabanu wyjazdowego
+    exit_barrier_start = (coords_x, int(frame_height * 0.55))
+    exit_barrier_end_down = (coords_x, int(frame_height * 0.68))
+
+
+    # Rysowanie szlabanu wjazdowego
+    if is_entry_barrier_down:
+        cv2.line(frame, entry_barrier_start, entry_barrier_end_down, (0, 0, 255), barrier_thickness)
+    else:
+        cv2.line(frame, entry_barrier_start, entry_barrier_end_down, (0, 255, 0), barrier_thickness)
+
+    # Rysowanie szlabanu wyjazdowego
+    if is_exit_barrier_down:
+        cv2.line(frame, exit_barrier_start, exit_barrier_end_down, (0, 0, 255), barrier_thickness)
+    else:
+        cv2.line(frame, exit_barrier_start, exit_barrier_end_down, (0, 255, 0), barrier_thickness)
+
+    return frame
