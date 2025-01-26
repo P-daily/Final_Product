@@ -492,3 +492,18 @@ def call_get_license_plate_from_exit_api():
     except Exception as e:
         print(f"Error during API call: {e}")
         return None
+
+
+def call_car_parked_properly_api():
+    try:
+        response = requests.get(f"{API_URL}/are_properly_parked")
+        if response.status_code == 200:
+            return response.json()['is_parked_properly'], None
+        elif response.status_code == 401:
+            return False, None
+        else:
+            return response.json()['is_parked_properly'], response.json()['improperly_parked_cars']
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False

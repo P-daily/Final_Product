@@ -2,12 +2,11 @@
 
 import cv2
 import torch
-from numexpr.expressions import truediv_op
 
 from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, \
     detect_new_car_on_entrance, call_get_license_plate_api, call_is_entrance_allowed_api, call_car_entrance_api, \
     add_new_car, update_positions_of_cars, update_parking_area, check_if_last_registered_car_is_out_of_entrance, \
-    reset_db, detect_car_on_exit, call_car_exit_api
+    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api
 from car_detector import draw_detections, detect_objects
 import pathlib
 import os
@@ -39,11 +38,13 @@ exit_detected_start_time = None
 
 exit_car_license_plate = None
 
+is_properly_parked_check_interval = 5
+properly_parked_check_time = time.time()
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
-
 
     if frame_counter % FRAME_INTERVAL == 0:
         frame = cut_frame_and_resize(frame)
@@ -54,12 +55,10 @@ while cap.isOpened():
         frame_with_marks, parking_data = draw_parking_boundary(frame_with_cars, points)
         update_parking_area(parking_data)
 
-
         # Check for new car at the entrance
         is__entry_detected = detect_new_car_on_entrance(detections, parking_data)
         if is__entry_detected and is_entry_barrier_down:
             license_plate = call_get_license_plate_api()
-
             if license_plate:
                 is_license_allowed, parking_type = call_is_entrance_allowed_api(license_plate)
                 print(f"ENTRANCE License plate: {license_plate}")
@@ -72,10 +71,8 @@ while cap.isOpened():
                     # Not allowed carq
                     is_entry_barrier_down = True
 
-
         if check_if_last_registered_car_is_out_of_entrance():
             is_entry_barrier_down = True
-
 
         is_exit_detected, exit_car_license_plate = detect_car_on_exit(detections, parking_data)
         if is_exit_detected:
@@ -86,14 +83,24 @@ while cap.isOpened():
         if is_exit_V2_detected:
             is_car_deleted = call_car_exit_api(exit_car_license_plate)
             if is_car_deleted:
-                print("\n\n\n\n-------------------------\n\n\n\n\n\n\n\n\Car deleted successfully!\n\n\n\n\n\n\n\n\n------------------------------------")
-            else:
-                print("Car not deleted")
+                print(
+                    "\n\n\n\n-------------------------\n\n\n\n\n\n\n\n\Car deleted successfully!\n\n\n\n\n\n\n\n\n------------------------------------")
+            # else:
+            # print("Car not deleted")
+
+        if time.time() - properly_parked_check_time > is_properly_parked_check_interval:
+            properly_parked_check_time = time.time()
+            are_all_cars_parked_properly, improperly_parked_cars = call_car_parked_properly_api()
+            if not are_all_cars_parked_properly and improperly_parked_cars:
+                print(f"Car with license plate")
+                for license_plate in improperly_parked_cars:
+                    print(license_plate, end=" ")
+                print("are parked improperly!")
+
 
 
 
         cv2.imshow("Parking", frame_with_marks)
-
 
     frame_counter += 1
 
