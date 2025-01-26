@@ -305,7 +305,6 @@ def call_car_entrance_api(license_plate):
     try:
         response = requests.post(f"{API_URL}/car_entrance", json={'license_plate': license_plate})
         if response.status_code == 201:
-            # print(f"License plate '{license_plate}' sent successfully!")
             return True
         else:
             print(f"Failed to send license plate '{license_plate}': {response.text}")
@@ -503,6 +502,26 @@ def call_car_parked_properly_api():
             return False, None
         else:
             return response.json()['is_parked_properly'], response.json()['improperly_parked_cars']
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False
+
+
+def call_log_api(log_type, data):
+    try:
+        data_to_str = ""
+        if isinstance(data, list) or isinstance(data, tuple) or isinstance(data, dict):
+            for d in data:
+                data_to_str += f"{d} "
+        else:
+            data_to_str = data
+        response = requests.post(f"{API_URL}/logs", json={'type': log_type, 'log': data_to_str})
+        if response.status_code == 201:
+            return True
+        else:
+            print(f"Failed to send log: {response.text}")
+            return False
 
     except Exception as e:
         print(f"Error during API call: {e}")
