@@ -6,7 +6,8 @@ import torch
 from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, \
     detect_new_car_on_entrance, call_get_license_plate_api, call_is_entrance_allowed_api, call_car_entrance_api, \
     add_new_car, update_positions_of_cars, update_parking_area, check_if_last_registered_car_is_out_of_entrance, \
-    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api, change_barrier_state
+    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api, change_barrier_state, \
+    get_cars_from_api
 from car_detector import draw_detections, detect_objects
 import pathlib
 import os
@@ -40,6 +41,12 @@ exit_detected_start_time = None
 exit_car_license_plate = None
 exiting_cars_license_plate = None
 
+
+frames_with_cars_in_the_same_position = 0
+BLOCK_TIME_THRESHOLD = 15  # Czas w sekundach
+POSITION_TOLERANCE = 5  # Tolerancja pozycji w pikselach
+cars_blocking_road = {}
+
 is_properly_parked_check_interval = 8
 properly_parked_check_time = time.time()
 
@@ -56,6 +63,47 @@ while cap.isOpened():
         frame_with_cars = draw_detections(frame, detections)
         frame_with_marks, parking_data = draw_parking_boundary(frame_with_cars, points)
         update_parking_area(parking_data)
+
+        cars = get_cars_from_api()
+        road = next((item for item in parking_data if item["id"] == 9), None)
+        # print(road)
+        for car in cars:
+            car_id = car['id']  # Identyfikator samochodu
+            car_position = [car['center_x'], car['center_y']]  # Pozycja samochodu (np. [x, y])
+            # Sprawdź, czy samochód znajduje się na drodze
+            if not (road["top_left_x"] < car_position[0] and
+                    road["top_left_y"] < car_position[1] and
+                    road["bottom_right_x"] > car_position[0] and
+                    road["bottom_right_y"] > car_position[1]):
+                # Usuń samochód spoza drogi, jeśli jest w monitorowaniu
+                if car_id in cars_blocking_road:
+                    print(f"Samochód {car_id} opuścił drogę.\n{cars_blocking_road}")
+                    cars_blocking_road.pop(car_id, None)
+            else:
+                # Sprawdź, czy samochód już jest monitorowany
+                if car_id in cars_blocking_road:
+                    print(f"Samochód {car_id} jest na drodze.\n{cars_blocking_road}")
+                    previous_position = cars_blocking_road[car_id]['position']
+                    blocking_start_time = cars_blocking_road[car_id]['start_time']
+                    # Sprawdź, czy samochód jest w tej samej pozycji (z tolerancją)
+                    if abs(car_position[0] - previous_position[0]) < POSITION_TOLERANCE and \
+                            abs(car_position[1] - previous_position[1]) < POSITION_TOLERANCE:
+                        # Oblicz czas blokowania
+                        elapsed_time = time.time() - blocking_start_time
+                        if elapsed_time >= BLOCK_TIME_THRESHOLD:
+                            data_to_send = "License_plate:" + car['license_plate']
+                            call_log_api("car_blocking_road", data_to_send)
+                            cars_blocking_road[car_id] = {'position': car_position, 'start_time': time.time()}
+                    else:
+                        # Samochód zmienił pozycję, zresetuj czas blokowania
+                        cars_blocking_road[car_id] = {'position': car_position, 'start_time': time.time()}
+                else:
+                    # Dodaj nowy samochód do monitorowania
+                    cars_blocking_road[car_id] = {'position': car_position, 'start_time': time.time()}
+        # Usuń samochody, które zniknęły (porównanie aktualnych ID samochodów)
+        current_car_ids = [car['id'] for car in cars]
+        cars_blocking_road = {car_id: data for car_id, data in cars_blocking_road.items() if
+                              car_id in current_car_ids}
 
         # Check for new car at the entrance
         is__entry_detected = detect_new_car_on_entrance(detections, parking_data)
