@@ -6,7 +6,7 @@ import torch
 from parking_utils import detect_and_mark_red_points, draw_parking_boundary, cut_frame_and_resize, \
     detect_new_car_on_entrance, call_get_license_plate_api, call_is_entrance_allowed_api, call_car_entrance_api, \
     add_new_car, update_positions_of_cars, update_parking_area, check_if_last_registered_car_is_out_of_entrance, \
-    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api, change_barrier_state
+    reset_db, detect_car_on_exit, call_car_exit_api, call_car_parked_properly_api, call_log_api, change_barrier_state, call_car_parked_in_one_slot_api
 from car_detector import draw_detections, detect_objects
 import pathlib
 import os
@@ -21,7 +21,8 @@ car_detection_model = torch.hub.load('ultralytics/yolov5', 'custom', path='jagie
                                      force_reload=True).to(device)
 pathlib.PosixPath = temp
 
-video_path = os.path.join("films", "parking.mp4")
+# video_path = os.path.join("films", "parking.mp4")
+video_path = "../data/parking.mp4"
 cap = cv2.VideoCapture(video_path)
 
 FRAME_INTERVAL = 5
@@ -96,6 +97,12 @@ while cap.isOpened():
             are_all_cars_parked_properly, improperly_parked_cars = call_car_parked_properly_api()
             if not are_all_cars_parked_properly and improperly_parked_cars:
                 call_log_api("not_allowed_parking (wrong privileges)", improperly_parked_cars)
+
+        if time.time() - properly_parked_check_time > is_properly_parked_check_interval:
+            properly_parked_check_time = time.time()
+            are_all_cars_takes_one_spot, improperly_parked_cars = call_car_parked_in_one_slot_api()
+            if not are_all_cars_takes_one_spot and improperly_parked_cars:
+                call_log_api("not_allowed_parking (takes more than one spot)", improperly_parked_cars)
 
         change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame_with_marks)
 

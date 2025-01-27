@@ -564,3 +564,28 @@ def change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame):
         cv2.line(frame, exit_barrier_start, exit_barrier_end_down, (0, 255, 0), barrier_thickness)
 
     return frame
+
+    
+def call_car_parked_in_one_slot_api():
+    try:
+        response = requests.get(f"{API_URL}/takes_one_slot")
+
+        if response.status_code == 200:
+            data = response.json()
+            improperly_parked_cars = data.get('improperly_parked_cars')  
+            is_parked_properly = len(improperly_parked_cars) == 0 if improperly_parked_cars else True
+            return is_parked_properly, improperly_parked_cars
+
+        elif response.status_code == 404:
+            return True, None
+
+        elif response.status_code == 401:
+            return False, None
+
+        else:
+            print(f"Unexpected response: {response.status_code} - {response.text}")
+            return False, None
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return False, None
