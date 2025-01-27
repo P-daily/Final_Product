@@ -565,3 +565,15 @@ def change_barrier_state(is_entry_barrier_down, is_exit_barrier_down, frame):
         cv2.line(frame, exit_barrier_start, exit_barrier_end_down, (0, 255, 0), barrier_thickness)
 
     return frame
+
+def get_cars_from_api():
+    try:
+        response = requests.get(f"{API_URL}/car_position")
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error during API call: {e}")
+        return None
